@@ -23,11 +23,11 @@ export default function Header({
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-cyan-500 to-indigo-500 animate-pulse" />
           <span
-            className={`font-extrabold text-sm tracking-wider uppercase ${
+            className={`font-black text-sm tracking-wider uppercase ${
               theme === "dark" ? "text-neutral-100" : "text-neutral-800"
             }`}
           >
-            DubStudio Pro
+            ItsDubTime
           </span>
         </div>
 
@@ -38,7 +38,7 @@ export default function Header({
               : "text-neutral-600 border-neutral-300 bg-neutral-300/50"
           }`}
         >
-          Máx. 25 MB
+          Máx. 4.5 MB
         </span>
 
         {loading && (
@@ -68,7 +68,6 @@ export default function Header({
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Alternador de tema */}
         <button
           onClick={onToggleTheme}
           className={`p-2 rounded-xl border text-sm transition-all ${

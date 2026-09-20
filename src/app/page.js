@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { motion } from "framer-motion";
 import Header from "../components/Header";
 import VideoPlayer from "../components/VideoPlayer";
 import ScriptPanel from "../components/ScriptPanel";
@@ -8,7 +9,8 @@ import Timeline from "../components/Timeline";
 import CharacterLegend from "../components/CharacterLegend";
 import Toast from "../components/Toast";
 
-const MAX_FILE_SIZE_MB = 25;
+// Límite optimizado para Vercel Serverless
+const MAX_FILE_SIZE_MB = 4.5;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 const ALLOWED_TYPES = [
   "video/mp4",
@@ -20,13 +22,16 @@ const ALLOWED_TYPES = [
   "audio/x-m4a",
 ];
 
+// Curva moderna de desaceleración suave estilo suite profesional
+const smoothEase = [0.22, 1, 0.36, 1];
+
 export default function Home() {
   const [videoSrc, setVideoSrc] = useState(null);
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState(null);
   const [activeId, setActiveId] = useState(null);
   const [currentTime, setCurrentTime] = useState(0);
-  const [theme, setTheme] = useState("dark"); // "dark" | "light"
+  const [theme, setTheme] = useState("dark");
   const [toast, setToast] = useState(null);
 
   const videoRef = useRef(null);
@@ -40,7 +45,6 @@ export default function Home() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 1. Validación de Formato
     if (!ALLOWED_TYPES.includes(file.type) && !file.name.endsWith(".mp4")) {
       showToast(
         "Formato no soportado. Sube un archivo de video (MP4, WEBM, MOV) o audio (MP3, WAV).",
@@ -49,11 +53,10 @@ export default function Home() {
       return;
     }
 
-    // 2. Validación de Tamaño (Máximo 25 MB)
     if (file.size > MAX_FILE_SIZE_BYTES) {
       const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
       showToast(
-        `El archivo pesa ${sizeMb} MB. El límite máximo para análisis rápido es de ${MAX_FILE_SIZE_MB} MB.`,
+        `El archivo pesa ${sizeMb} MB. En Vercel el límite seguro es de ${MAX_FILE_SIZE_MB} MB (Usa clips cortos o solo audio .mp3).`,
         "error",
       );
       return;
@@ -141,45 +144,77 @@ export default function Home() {
     >
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <Header
-        loading={loading}
-        videoSrc={videoSrc}
-        onFileUpload={handleFileUpload}
-        theme={theme}
-        onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
-      />
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
-        <VideoPlayer
-          videoRef={videoRef}
+      {/* 1. Header: Despliegue horizontal elegante con desenfoque */}
+      <motion.div
+        initial={{ opacity: 0, x: -30, filter: "blur(6px)" }}
+        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+        transition={{ duration: 0.6, ease: smoothEase }}
+      >
+        <Header
+          loading={loading}
           videoSrc={videoSrc}
-          currentTime={currentTime}
-          onTimeUpdate={handleTimeUpdate}
+          onFileUpload={handleFileUpload}
           theme={theme}
+          onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
         />
+      </motion.div>
 
-        <ScriptPanel
-          data={data}
-          activeId={activeId}
-          onSelectDialogue={handleSelectDialogue}
-          theme={theme}
-        />
+      {/* 2. Área Central: Video y Guión */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0">
+        {/* VideoPlayer: Emergente vertical desde abajo */}
+        <motion.div
+          initial={{ opacity: 0, y: 35, scale: 0.98, filter: "blur(8px)" }}
+          animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+          transition={{ duration: 0.7, delay: 0.15, ease: smoothEase }}
+          className="flex flex-col min-h-0"
+        >
+          <VideoPlayer
+            videoRef={videoRef}
+            videoSrc={videoSrc}
+            currentTime={currentTime}
+            onTimeUpdate={handleTimeUpdate}
+            theme={theme}
+          />
+        </motion.div>
+
+        {/* ScriptPanel: Deslizamiento desde la izquierda hacia la derecha */}
+        <motion.div
+          initial={{ opacity: 0, x: -35, scale: 0.98, filter: "blur(8px)" }}
+          animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
+          transition={{ duration: 0.7, delay: 0.25, ease: smoothEase }}
+          className="flex flex-col min-h-0"
+        >
+          <ScriptPanel
+            data={data}
+            activeId={activeId}
+            onSelectDialogue={handleSelectDialogue}
+            theme={theme}
+          />
+        </motion.div>
       </div>
 
+      {/* 3. Barra de Personajes */}
       <CharacterLegend
         characters={data?.characters}
         onRenameSpeaker={handleRenameSpeaker}
         theme={theme}
       />
 
-      <Timeline
-        data={data}
-        currentTime={currentTime}
-        activeId={activeId}
-        onSelectDialogue={handleSelectDialogue}
-        onSeek={handleSeek}
-        theme={theme}
-      />
+      {/* 4. Timeline: Entrada horizontal suave con desenfoque progresivo */}
+      <motion.div
+        initial={{ opacity: 0, x: -40, filter: "blur(6px)" }}
+        animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+        transition={{ duration: 0.75, delay: 0.35, ease: smoothEase }}
+      >
+        <Timeline
+          data={data}
+          currentTime={currentTime}
+          activeId={activeId}
+          onSelectDialogue={handleSelectDialogue}
+          onSeek={handleSeek}
+          theme={theme}
+        />
+      </motion.div>
     </main>
   );
 }

@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
 
+// Configuración de ejecución máxima para Vercel Serverless
+export const maxDuration = 15;
+
 const SPEAKER_PALETTES = [
   { bg: "bg-amber-500", border: "border-amber-500", text: "text-amber-400" },
   { bg: "bg-sky-500", border: "border-sky-500", text: "text-sky-400" },
@@ -13,7 +16,6 @@ const SPEAKER_PALETTES = [
   { bg: "bg-rose-500", border: "border-rose-500", text: "text-rose-400" },
 ];
 
-// Modelos activos y soportados actualmente por la API de Google
 const FALLBACK_MODELS = [
   "gemini-3.6-flash",
   "gemini-3.1-pro-preview",
@@ -52,7 +54,9 @@ export async function POST(request) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "Falta GEMINI_API_KEY en .env.local" },
+        {
+          error: "Falta GEMINI_API_KEY en las variables de entorno de Vercel.",
+        },
         { status: 500 },
       );
     }
@@ -75,7 +79,6 @@ Reglas:
     let responseText = null;
     let lastError = null;
 
-    // Intentar con la lista de modelos ante posibles caídas o sobrecarga (503/429)
     for (const modelName of FALLBACK_MODELS) {
       try {
         console.log(`Procesando transcripción con: ${modelName}...`);
@@ -133,13 +136,12 @@ Reglas:
         });
 
         responseText = response.text;
-        if (responseText) break; // Éxito: salimos del ciclo de contingencia
+        if (responseText) break;
       } catch (err) {
         lastError = err;
         console.warn(
           `Aviso: ${modelName} no disponible (${err?.status || err?.message}). Probando alternativa...`,
         );
-        // Pausa de 800ms antes del siguiente intento
         await new Promise((resolve) => setTimeout(resolve, 800));
       }
     }
