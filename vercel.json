@@ -1,0 +1,7 @@
+{
+  "functions": {
+    "src/app/api/transcribe/route.js": {
+      "maxDuration": 60
+    }
+  }
+}

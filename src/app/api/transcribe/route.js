@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI, Type } from "@google/genai";
 
 // Configuración de ejecución máxima para Vercel Serverless
-export const maxDuration = 15;
+export const maxDuration = 60;
 
 const SPEAKER_PALETTES = [
   { bg: "bg-amber-500", border: "border-amber-500", text: "text-amber-400" },
