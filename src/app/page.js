@@ -78,9 +78,24 @@ export default function Home() {
         body: formData,
       });
 
-      const json = await res.json();
-      if (!res.ok)
+      // Leer como texto primero para evitar el fallo si Vercel devuelve HTML de error
+      const rawText = await res.text();
+      let json;
+      try {
+        json = JSON.parse(rawText);
+      } catch (parseErr) {
+        throw new Error(
+          res.status === 413
+            ? "El archivo supera el límite de carga de Vercel (máx 4.5 MB). Usa un clip más corto o un archivo .mp3."
+            : res.status === 504
+              ? "El análisis tardó demasiado (timeout en Vercel). Prueba con una escena más breve."
+              : `Error del servidor (${res.status}): No se pudo procesar la respuesta.`,
+        );
+      }
+
+      if (!res.ok) {
         throw new Error(json.error || "Error al procesar el archivo");
+      }
 
       setData(json);
       showToast("¡Timecodes y guión generados con éxito!", "success");
