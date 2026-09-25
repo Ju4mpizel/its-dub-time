@@ -17,25 +17,36 @@ export default function ScriptPanel({
   const dialogues = data?.dialogues || [];
   const charactersList = data?.characters ? Object.values(data.characters) : [];
 
-  // Estados locales para la edición en caliente
+  // Estados locales para la edición
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [changingSpeakerId, setChangingSpeakerId] = useState(null);
 
-  // Referencias para el Auto-Scroll inteligente
   const listContainerRef = useRef(null);
   const itemRefs = useRef({});
 
-  // Auto-scroll suave centrado en la frase activa
+  // Auto-scroll inteligente bajo demanda (solo baja lo justo si la frase quedó afuera)
   useEffect(() => {
-    // Si se está editando una frase, no mover el scroll para no desconcentrar
-    if (editingId !== null) return;
+    if (editingId !== null || !activeId) return;
 
-    if (activeId && itemRefs.current[activeId]) {
-      itemRefs.current[activeId].scrollIntoView({
-        behavior: "smooth",
-        block: "center",
-      });
+    const el = itemRefs.current[activeId];
+    const container = listContainerRef.current;
+
+    if (el && container) {
+      const elRect = el.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+
+      // Margen de seguridad de 20px para que no quede pegada al borde
+      const isAbove = elRect.top < containerRect.top + 20;
+      const isBelow = elRect.bottom > containerRect.bottom - 20;
+
+      // Solo desplazamos si la frase está fuera de la zona visible
+      if (isAbove || isBelow) {
+        el.scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+      }
     }
   }, [activeId, editingId]);
 
@@ -89,7 +100,7 @@ export default function ScriptPanel({
         </span>
       </div>
 
-      {/* Lista de diálogos con scroll asistido */}
+      {/* Lista de diálogos con seguimiento no intrusivo */}
       <div
         ref={listContainerRef}
         className="flex-1 overflow-y-auto space-y-2 pr-1 select-none scrollbar-thin scrollbar-thumb-neutral-700 scrollbar-track-transparent"
@@ -112,9 +123,9 @@ export default function ScriptPanel({
                 key={d.id}
                 ref={(el) => (itemRefs.current[d.id] = el)}
                 onClick={() => onSelectDialogue(d)}
-                className={`p-3 rounded-xl border cursor-pointer transition-all duration-300 ${
+                className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
                   isActive
-                    ? "bg-cyan-500/15 border-cyan-400 ring-1 ring-inset ring-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.25)] scale-[1.01]"
+                    ? "bg-cyan-500/15 border-cyan-400 ring-1 ring-inset ring-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]"
                     : isMyCharacter
                       ? theme === "dark"
                         ? "bg-neutral-950/40 border-white/5 hover:border-white/20 hover:bg-neutral-850"
@@ -122,7 +133,7 @@ export default function ScriptPanel({
                       : "bg-neutral-950/20 border-transparent opacity-30 grayscale brightness-50"
                 }`}
               >
-                {/* Barra superior de la tarjeta: Personaje + Timecode */}
+                {/* Barra superior: Personaje + Timecode */}
                 <div className="flex justify-between items-center mb-1.5 relative">
                   <div className="flex items-center gap-2">
                     <button
@@ -152,7 +163,7 @@ export default function ScriptPanel({
                       </span>
                     </button>
 
-                    {/* Menú flotante de reasignación */}
+                    {/* Menú de reasignación */}
                     {isPickingSpeaker && (
                       <div
                         onClick={(e) => e.stopPropagation()}
@@ -213,7 +224,7 @@ export default function ScriptPanel({
                   </div>
                 </div>
 
-                {/* Texto de la frase o Input de Edición */}
+                {/* Contenido de la frase */}
                 {isEditingThis ? (
                   <div
                     onClick={(e) => e.stopPropagation()}
