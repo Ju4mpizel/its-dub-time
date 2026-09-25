@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 
 const smoothEase = [0.16, 1, 0.3, 1];
@@ -21,6 +21,23 @@ export default function ScriptPanel({
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [changingSpeakerId, setChangingSpeakerId] = useState(null);
+
+  // Referencias para el Auto-Scroll inteligente
+  const listContainerRef = useRef(null);
+  const itemRefs = useRef({});
+
+  // Auto-scroll suave centrado en la frase activa
+  useEffect(() => {
+    // Si se está editando una frase, no mover el scroll para no desconcentrar
+    if (editingId !== null) return;
+
+    if (activeId && itemRefs.current[activeId]) {
+      itemRefs.current[activeId].scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }
+  }, [activeId, editingId]);
 
   const startEditingText = (d, e) => {
     e.stopPropagation();
@@ -72,8 +89,11 @@ export default function ScriptPanel({
         </span>
       </div>
 
-      {/* Lista de diálogos */}
-      <div className="flex-1 overflow-y-auto space-y-2 pr-1 select-none">
+      {/* Lista de diálogos con scroll asistido */}
+      <div
+        ref={listContainerRef}
+        className="flex-1 overflow-y-auto space-y-2 pr-1 select-none scrollbar-thin scrollbar-thumb-neutral-700 scrollbar-track-transparent"
+      >
         {dialogues.length === 0 ? (
           <div className="h-full flex items-center justify-center text-neutral-500 text-xs font-mono">
             Esperando archivo multimedia...
@@ -90,10 +110,11 @@ export default function ScriptPanel({
             return (
               <div
                 key={d.id}
+                ref={(el) => (itemRefs.current[d.id] = el)}
                 onClick={() => onSelectDialogue(d)}
-                className={`p-3 rounded-xl border cursor-pointer transition-all duration-200 ${
+                className={`p-3 rounded-xl border cursor-pointer transition-all duration-300 ${
                   isActive
-                    ? "bg-cyan-500/15 border-cyan-400 ring-1 ring-inset ring-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+                    ? "bg-cyan-500/15 border-cyan-400 ring-1 ring-inset ring-cyan-400 shadow-[0_0_20px_rgba(6,182,212,0.25)] scale-[1.01]"
                     : isMyCharacter
                       ? theme === "dark"
                         ? "bg-neutral-950/40 border-white/5 hover:border-white/20 hover:bg-neutral-850"
@@ -104,7 +125,6 @@ export default function ScriptPanel({
                 {/* Barra superior de la tarjeta: Personaje + Timecode */}
                 <div className="flex justify-between items-center mb-1.5 relative">
                   <div className="flex items-center gap-2">
-                    {/* Botón para cambiar personaje si la IA falló */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -169,7 +189,6 @@ export default function ScriptPanel({
                       {d.timecode}
                     </span>
 
-                    {/* Icono discreto de lápiz para editar */}
                     {!isEditingThis && (
                       <button
                         onClick={(e) => startEditingText(d, e)}
