@@ -15,6 +15,12 @@ export default function RecordingStudioPanel({
   isPlayingMix,
   onTogglePlayMix,
   onDeleteTake,
+  guideAudioMode,
+  onChangeGuideAudioMode,
+  // Props de hardware de audio
+  audioDevices = [],
+  selectedDeviceId,
+  onSelectAudioDevice,
 }) {
   const charactersList = characters ? Object.values(characters) : [];
   const recordedCharactersCount = Object.keys(takesByCharacter).length;
@@ -90,8 +96,8 @@ export default function RecordingStudioPanel({
                           ? "bg-cyan-500/15 border-cyan-400 text-white font-bold ring-1 ring-cyan-400/50 shadow-md"
                           : "bg-cyan-50 border-cyan-500 text-cyan-950 font-bold ring-1 ring-cyan-500/40 shadow-sm"
                         : theme === "dark"
-                          ? "bg-neutral-950/40 border-white/5 text-neutral-300 hover:border-white/20 hover:bg-neutral-850"
-                          : "bg-neutral-100/90 border-neutral-200 text-neutral-700 hover:bg-neutral-200/80 hover:border-neutral-300"
+                          ? "bg-neutral-950/40 border-white/5 text-neutral-300 hover:border-white/20"
+                          : "bg-neutral-100/90 border-neutral-200 text-neutral-700 hover:bg-neutral-200/80"
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -132,7 +138,7 @@ export default function RecordingStudioPanel({
           )}
         </div>
 
-        {/* 2. Bloques de tomas registradas (Botonera limpia solo con iconos) */}
+        {/* 2. Tomas registradas */}
         <div
           className={`space-y-2 border-t pt-2.5 ${
             theme === "dark" ? "border-white/10" : "border-neutral-200"
@@ -168,7 +174,6 @@ export default function RecordingStudioPanel({
                         : "bg-neutral-50 border-neutral-200 shadow-sm"
                     }`}
                   >
-                    {/* Información del Personaje */}
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span
                         className={`w-2.5 h-2.5 rounded-full ${char?.bg || "bg-cyan-500"} shrink-0 shadow-sm`}
@@ -184,9 +189,8 @@ export default function RecordingStudioPanel({
                       </span>
                     </div>
 
-                    {/* Botonera compacta solo iconos */}
                     <div className="flex items-center gap-1 shrink-0">
-                      {/* 1. Play / Pause Solo */}
+                      {/* Oír solo */}
                       <button
                         onClick={() => onTogglePlaySoloTake(Number(speakerId))}
                         title={
@@ -199,7 +203,7 @@ export default function RecordingStudioPanel({
                             ? "bg-amber-500 border-amber-400 text-white shadow-[0_0_10px_rgba(245,158,11,0.4)]"
                             : theme === "dark"
                               ? "bg-neutral-800/90 border-white/10 text-neutral-300 hover:text-white hover:bg-neutral-700"
-                              : "bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900 shadow-sm"
+                              : "bg-white border-neutral-300 text-neutral-700 hover:bg-neutral-100 shadow-sm"
                         }`}
                       >
                         {isSoloPlaying ? (
@@ -221,7 +225,7 @@ export default function RecordingStudioPanel({
                         )}
                       </button>
 
-                      {/* 2. Regrabar (Flechas de reintento) */}
+                      {/* Regrabar */}
                       <button
                         onClick={() => {
                           onSelectCharacter(Number(speakerId));
@@ -231,8 +235,8 @@ export default function RecordingStudioPanel({
                         title="Regrabar esta toma"
                         className={`p-2 rounded-lg border transition-all active:scale-95 disabled:opacity-40 ${
                           theme === "dark"
-                            ? "bg-rose-950/40 border-rose-500/30 text-rose-300 hover:bg-rose-900/60 hover:border-rose-400"
-                            : "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 hover:border-rose-300 shadow-sm"
+                            ? "bg-rose-950/40 border-rose-500/30 text-rose-300 hover:bg-rose-900/60"
+                            : "bg-rose-50 border-rose-200 text-rose-600 hover:bg-rose-100 shadow-sm"
                         }`}
                       >
                         <svg
@@ -250,15 +254,15 @@ export default function RecordingStudioPanel({
                         </svg>
                       </button>
 
-                      {/* 3. Descartar (Basurero) */}
+                      {/* Descartar */}
                       <button
                         onClick={() => onDeleteTake(Number(speakerId))}
                         disabled={isRecording}
                         title="Descartar toma permanentemente"
                         className={`p-2 rounded-lg border transition-all active:scale-95 disabled:opacity-40 ${
                           theme === "dark"
-                            ? "bg-neutral-900 border-white/10 text-neutral-400 hover:text-rose-400 hover:border-rose-500/40 hover:bg-rose-950/20"
-                            : "bg-white border-neutral-300 text-neutral-400 hover:text-rose-600 hover:border-rose-300 hover:bg-rose-50 shadow-sm"
+                            ? "bg-neutral-900 border-white/10 text-neutral-400 hover:text-rose-400 hover:bg-rose-950/20"
+                            : "bg-white border-neutral-300 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 shadow-sm"
                         }`}
                       >
                         <svg
@@ -283,9 +287,9 @@ export default function RecordingStudioPanel({
           )}
         </div>
 
-        {/* 3. Acciones de Grabación y Botón de Mezcla Master */}
+        {/* 3. Acciones de Grabación, Pista Guía y Mezcla */}
         <div
-          className={`pt-2.5 border-t space-y-2 shrink-0 ${
+          className={`pt-2.5 border-t space-y-2.5 shrink-0 ${
             theme === "dark" ? "border-white/10" : "border-neutral-200"
           }`}
         >
@@ -299,6 +303,49 @@ export default function RecordingStudioPanel({
               </div>
             </div>
           )}
+
+          {/* Selector de Entrada de Micrófono */}
+          <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border bg-neutral-950/30 border-white/5">
+            <svg
+              className={`w-3.5 h-3.5 shrink-0 ${
+                theme === "dark" ? "text-cyan-400" : "text-cyan-600"
+              }`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 100-6 3 3 0 000 6z"
+              />
+            </svg>
+            <select
+              value={selectedDeviceId}
+              onChange={(e) => onSelectAudioDevice(e.target.value)}
+              disabled={isRecording}
+              className={`w-full bg-transparent text-[11px] font-mono font-medium focus:outline-none cursor-pointer truncate ${
+                theme === "dark" ? "text-neutral-300" : "text-neutral-700"
+              }`}
+            >
+              {audioDevices.length === 0 ? (
+                <option value="" className="bg-neutral-900 text-neutral-400">
+                  Micrófono por defecto
+                </option>
+              ) : (
+                audioDevices.map((dev, idx) => (
+                  <option
+                    key={dev.deviceId || idx}
+                    value={dev.deviceId}
+                    className="bg-neutral-900 text-neutral-200"
+                  >
+                    {dev.label || `Micrófono ${idx + 1}`}
+                  </option>
+                ))
+              )}
+            </select>
+          </div>
 
           {isRecording ? (
             <button
@@ -331,6 +378,49 @@ export default function RecordingStudioPanel({
             )
           )}
 
+          {/* Conmutador de Pista Guía */}
+          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-xl border bg-neutral-950/30 border-white/5 text-[11px] font-mono">
+            <span
+              className={
+                theme === "dark" ? "text-neutral-400" : "text-neutral-600"
+              }
+            >
+              Audio Original:
+            </span>
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-neutral-900 border border-white/10">
+              <button
+                onClick={() => onChangeGuideAudioMode("mute")}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                  guideAudioMode === "mute"
+                    ? "bg-rose-500/20 text-rose-300 border border-rose-500/40"
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                Mute (0%)
+              </button>
+              <button
+                onClick={() => onChangeGuideAudioMode("low")}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                  guideAudioMode === "low"
+                    ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40"
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                Guía (20%)
+              </button>
+              <button
+                onClick={() => onChangeGuideAudioMode("full")}
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
+                  guideAudioMode === "full"
+                    ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40"
+                    : "text-neutral-400 hover:text-neutral-200"
+                }`}
+              >
+                100%
+              </button>
+            </div>
+          </div>
+
           {/* Botón Distintivo de Master Mezcla */}
           <button
             onClick={onTogglePlayMix}
@@ -340,7 +430,7 @@ export default function RecordingStudioPanel({
                 ? "bg-amber-600 hover:bg-amber-500 border-amber-400 text-white shadow-[0_0_20px_rgba(217,119,6,0.5)]"
                 : theme === "dark"
                   ? "bg-gradient-to-r from-teal-900/80 via-emerald-800/80 to-teal-900/80 hover:from-teal-800 hover:to-emerald-700 border-emerald-500/40 text-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.2)]"
-                  : "bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-500 hover:to-emerald-500 border-teal-500 text-white shadow-md shadow-emerald-700/20"
+                  : "bg-gradient-to-r from-teal-600 via-emerald-600 to-teal-700 hover:from-teal-500 hover:to-emerald-500 border-teal-500 text-white shadow-md"
             }`}
           >
             <div className="flex items-center gap-2">

@@ -1,15 +1,71 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 export function useAudioRecorder() {
   const [isRecording, setIsRecording] = useState(false);
+  const [audioDevices, setAudioDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState("");
+
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
 
+  // 1. Obtener lista de micrófonos disponibles
+  const updateAudioDevices = useCallback(async () => {
+    try {
+      if (!navigator?.mediaDevices?.enumerateDevices) return;
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter((d) => d.kind === "audioinput");
+      setAudioDevices(inputs);
+
+      // Si no hay seleccionado o el seleccionado ya no existe, tomar el primero o default
+      if (inputs.length > 0) {
+        setSelectedDeviceId((prev) => {
+          const exists = inputs.some((d) => d.deviceId === prev);
+          return exists && prev ? prev : inputs[0].deviceId;
+        });
+      }
+    } catch (err) {
+      console.warn("No se pudieron enumerar los micrófonos:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    updateAudioDevices();
+
+    // Escuchar si conectan o desconectan auriculares/micrófono USB
+    if (navigator?.mediaDevices?.addEventListener) {
+      navigator.mediaDevices.addEventListener(
+        "devicechange",
+        updateAudioDevices,
+      );
+      return () => {
+        navigator.mediaDevices.removeEventListener(
+          "devicechange",
+          updateAudioDevices,
+        );
+      };
+    }
+  }, [updateAudioDevices]);
+
+  // 2. Iniciar grabación apuntando al micrófono elegido
   const startRecording = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const audioConstraints = selectedDeviceId
+        ? {
+            deviceId: { exact: selectedDeviceId },
+            echoCancellation: true,
+            noiseSuppression: true,
+          }
+        : { echoCancellation: true, noiseSuppression: true };
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+      });
+
+      // Tras obtener permiso, las etiquetas (labels) de los micros ya son visibles: refrescamos la lista
+      updateAudioDevices();
+
       chunksRef.current = [];
 
       const mimeType = MediaRecorder.isTypeSupported("audio/webm")
@@ -27,7 +83,7 @@ export function useAudioRecorder() {
       setIsRecording(true);
     } catch (err) {
       console.error(err);
-      throw new Error("No se pudo acceder al micrófono. Permite el acceso.");
+      throw new Error("No se pudo acceder al micrófono seleccionado.");
     }
   };
 
@@ -48,7 +104,6 @@ export function useAudioRecorder() {
         });
         const url = URL.createObjectURL(blob);
 
-        // Apagar micro
         mediaRecorderRef.current.stream.getTracks().forEach((t) => t.stop());
         setIsRecording(false);
         resolve({ blob, url });
@@ -58,5 +113,12 @@ export function useAudioRecorder() {
     });
   };
 
-  return { isRecording, startRecording, stopRecording };
+  return {
+    isRecording,
+    startRecording,
+    stopRecording,
+    audioDevices,
+    selectedDeviceId,
+    setSelectedDeviceId,
+  };
 }
