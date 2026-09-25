@@ -44,16 +44,32 @@ export default function Home() {
   const [theme, setTheme] = useState("dark");
   const [toast, setToast] = useState(null);
 
-  // Estados de Deshacer y Respaldo Original
+  // Historial y Respaldo
   const originalDataRef = useRef(null);
   const [historyStack, setHistoryStack] = useState([]);
 
+  // Panel de Grabación
   const [showRecordingStudio, setShowRecordingStudio] = useState(false);
   const [selectedCharacterId, setSelectedCharacterId] = useState(null);
   const [countdown, setCountdown] = useState(null);
-  const [takesByCharacter, setTakesByCharacter] = useState({});
+
+  // MODOS DE GRABACIÓN: 'line' (Por Frase) | 'full' (Escena Completa)
+  const [recordingMode, setRecordingMode] = useState("line");
+
+  // Almacenamiento de Tomas
+  const [takesByCharacter, setTakesByCharacter] = useState({}); // MODO FULL: { [speakerId]: { id, url } }
+  const [takesByDialogue, setTakesByDialogue] = useState({}); // MODO LINE: { [dialogueId]: { id, url, start, end, speaker } }
+
+  // Control de Reproducción Aislada
   const [playingSoloCharacterId, setPlayingSoloCharacterId] = useState(null);
+  const [playingSoloDialogueId, setPlayingSoloDialogueId] = useState(null);
   const [isPlayingMix, setIsPlayingMix] = useState(false);
+
+  // Registro de grabación activa por frase
+  const [recordingDialogueId, setRecordingDialogueId] = useState(null);
+  const activeRecordingTargetRef = useRef(null); // { id, end }
+
+  // Pista de referencia (Audio original)
   const [guideAudioMode, setGuideAudioMode] = useState("mute");
 
   const {
@@ -66,14 +82,13 @@ export default function Home() {
   } = useAudioRecorder();
 
   const videoRef = useRef(null);
-  const audioElementsRef = useRef({});
+  const audioElementsRef = useRef({}); // Audios de tomas de personajes o frases
 
   const showToast = (message, type = "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4500);
   };
 
-  // Guardar instantánea antes de cualquier cambio destructivo
   const pushToHistory = useCallback(() => {
     setData((current) => {
       if (current) {
@@ -86,7 +101,6 @@ export default function Home() {
     });
   }, []);
 
-  // Deshacer último cambio
   const handleUndo = useCallback(() => {
     if (historyStack.length === 0) return;
     setHistoryStack((prev) => {
@@ -98,7 +112,6 @@ export default function Home() {
     showToast("Cambio deshecho.", "warning");
   }, [historyStack.length]);
 
-  // Atajo de teclado universal Ctrl + Z / Cmd + Z
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
       if (
@@ -116,13 +129,12 @@ export default function Home() {
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, [handleUndo]);
 
-  // Restaurar a la versión inicial detectada por Gemini
   const handleResetToOriginal = () => {
     if (!originalDataRef.current) return;
     pushToHistory();
     setData(JSON.parse(JSON.stringify(originalDataRef.current)));
     setActiveId(null);
-    showToast("Guión y tiempos restaurados al estado original.", "success");
+    showToast("Restaurado al guión original.", "success");
   };
 
   const applyGuideAudioLevel = (mode = guideAudioMode) => {
@@ -141,7 +153,11 @@ export default function Home() {
 
   const handleGuideModeChange = (mode) => {
     setGuideAudioMode(mode);
-    if (isPlayingMix || playingSoloCharacterId !== null) {
+    if (
+      isPlayingMix ||
+      playingSoloCharacterId !== null ||
+      playingSoloDialogueId !== null
+    ) {
       applyGuideAudioLevel(mode);
     }
   };
@@ -215,7 +231,7 @@ export default function Home() {
     });
 
     setActiveId(newId);
-    showToast("Nuevo diálogo añadido. Usa Ctrl+Z si te equivocas.", "success");
+    showToast("Nuevo diálogo añadido.", "success");
   };
 
   const handleDeleteDialogue = (dialogueId) => {
@@ -228,7 +244,7 @@ export default function Home() {
       };
     });
     if (activeId === dialogueId) setActiveId(null);
-    showToast("Bloque eliminado (Usa Ctrl+Z para restaurar).", "warning");
+    showToast("Bloque eliminado.", "warning");
   };
 
   const handleFileUpload = async (e) => {
@@ -255,7 +271,9 @@ export default function Home() {
     setData(null);
     setActiveId(null);
     setTakesByCharacter({});
+    setTakesByDialogue({});
     setPlayingSoloCharacterId(null);
+    setPlayingSoloDialogueId(null);
     setIsPlayingMix(false);
     setHistoryStack([]);
     originalDataRef.current = null;
@@ -287,17 +305,13 @@ export default function Home() {
       if (!res.ok)
         throw new Error(json.error || "Error al procesar el archivo");
 
-      // Guardamos la copia de respaldo original intacta
       originalDataRef.current = JSON.parse(JSON.stringify(json));
       setData(json);
 
       if (json.characters && Object.keys(json.characters).length > 0) {
         setSelectedCharacterId(Number(Object.keys(json.characters)[0]));
       }
-      showToast(
-        "¡Guión listo! Tienes respaldo automático y Ctrl+Z activados.",
-        "success",
-      );
+      showToast("¡Guión listo! Abre el Estudio ADR para doblar.", "success");
     } catch (err) {
       showToast(err.message || "Error al conectar con el servidor", "error");
     } finally {
@@ -314,6 +328,7 @@ export default function Home() {
     }
   };
 
+  // Motor central de sincronización
   const handleTimeUpdate = () => {
     if (!videoRef.current) return;
     const time = videoRef.current.currentTime;
@@ -326,31 +341,60 @@ export default function Home() {
       if (current) setActiveId(current.id);
     }
 
-    if (isPlayingMix) {
-      Object.values(audioElementsRef.current).forEach((audio) => {
-        if (!audio) return;
-        if (Math.abs(audio.currentTime - time) > 0.15) {
-          audio.currentTime = time;
-        }
-        if (videoRef.current.paused && !audio.paused) {
-          audio.pause();
-        } else if (!videoRef.current.paused && audio.paused) {
-          audio.play().catch(() => {});
-        }
-      });
+    // AUTO-STOP EN MODO POR FRASE: Al llegar al final de la frase (+ 0.25s de margen), detiene la grabación
+    if (isRecording && activeRecordingTargetRef.current) {
+      if (time >= activeRecordingTargetRef.current.end + 0.25) {
+        handleStopRecordLine();
+        return;
+      }
     }
 
-    if (playingSoloCharacterId !== null) {
-      const soloAudio = audioElementsRef.current[playingSoloCharacterId];
-      if (soloAudio) {
-        if (Math.abs(soloAudio.currentTime - time) > 0.15) {
-          soloAudio.currentTime = time;
-        }
-        if (videoRef.current.paused && !soloAudio.paused) {
-          soloAudio.pause();
-        } else if (!videoRef.current.paused && soloAudio.paused) {
-          soloAudio.play().catch(() => {});
-        }
+    // Auto-stop al escuchar una frase individual
+    if (playingSoloDialogueId !== null) {
+      const currentDialogue = data?.dialogues?.find(
+        (d) => d.id === playingSoloDialogueId,
+      );
+      if (currentDialogue && time >= currentDialogue.end + 0.2) {
+        videoRef.current.pause();
+        audioElementsRef.current[`line_${playingSoloDialogueId}`]?.pause();
+        setPlayingSoloDialogueId(null);
+        videoRef.current.muted = false;
+        videoRef.current.volume = 1.0;
+        return;
+      }
+    }
+
+    // Sincronización en Mezcla Completa
+    if (isPlayingMix) {
+      if (recordingMode === "full") {
+        Object.entries(takesByCharacter).forEach(([speakerId]) => {
+          const audio = audioElementsRef.current[`char_${speakerId}`];
+          if (!audio) return;
+          if (Math.abs(audio.currentTime - time) > 0.15)
+            audio.currentTime = time;
+          if (videoRef.current.paused && !audio.paused) audio.pause();
+          else if (!videoRef.current.paused && audio.paused)
+            audio.play().catch(() => {});
+        });
+      } else {
+        // En modo por frase: activa el audio solo cuando el tiempo entra en [start, end]
+        Object.entries(takesByDialogue).forEach(([dId, take]) => {
+          const audio = audioElementsRef.current[`line_${dId}`];
+          if (!audio) return;
+
+          const isWithin = time >= take.start && time <= take.end + 0.3;
+          if (isWithin) {
+            const expectedOffset = Math.max(0, time - take.start);
+            if (Math.abs(audio.currentTime - expectedOffset) > 0.15) {
+              audio.currentTime = expectedOffset;
+            }
+            if (!videoRef.current.paused && audio.paused) {
+              audio.play().catch(() => {});
+            }
+          } else {
+            if (!audio.paused) audio.pause();
+          }
+        });
       }
     }
   };
@@ -358,9 +402,6 @@ export default function Home() {
   const handleSeek = (timeInSeconds) => {
     setCurrentTime(timeInSeconds);
     if (videoRef.current) videoRef.current.currentTime = timeInSeconds;
-    Object.values(audioElementsRef.current).forEach((audio) => {
-      if (audio) audio.currentTime = timeInSeconds;
-    });
   };
 
   const handleRenameSpeaker = (speakerId, newName) => {
@@ -377,19 +418,135 @@ export default function Home() {
     }));
   };
 
-  const handleStartRecord = () => {
+  // --- LÓGICA DE GRABACIÓN: 1. MODO POR FRASE ---
+  const handleStartRecordLine = (dialogue) => {
     if (!videoRef.current) return;
-    if (selectedCharacterId === null) {
-      showToast("Selecciona un personaje en el panel.", "warning");
-      return;
+
+    // Pausar cualquier reproducción activa
+    videoRef.current.pause();
+    Object.values(audioElementsRef.current).forEach((a) => a?.pause());
+    setIsPlayingMix(false);
+    setPlayingSoloDialogueId(null);
+    setPlayingSoloCharacterId(null);
+
+    // Pre-roll: Comenzar 1.5s antes para que el actor agarre el ritmo
+    const preRollStart = Math.max(0, dialogue.start - 1.5);
+    videoRef.current.currentTime = preRollStart;
+    videoRef.current.muted = true; // Sin eco durante grabación
+
+    setRecordingDialogueId(dialogue.id);
+    activeRecordingTargetRef.current = { id: dialogue.id, end: dialogue.end };
+
+    let count = 3;
+    setCountdown(count);
+
+    const timer = setInterval(async () => {
+      count -= 1;
+      if (count > 0) {
+        setCountdown(count);
+      } else {
+        clearInterval(timer);
+        setCountdown(null);
+
+        videoRef.current.play();
+        try {
+          await startRecording();
+          showToast(
+            `¡Grabando frase de ${data?.characters[dialogue.speaker]?.name}!`,
+            "warning",
+          );
+        } catch (err) {
+          showToast(err.message, "error");
+          videoRef.current.pause();
+          videoRef.current.muted = false;
+          setRecordingDialogueId(null);
+          activeRecordingTargetRef.current = null;
+        }
+      }
+    }, 800);
+  };
+
+  const handleStopRecordLine = async () => {
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.muted = false;
+      videoRef.current.volume = 1.0;
     }
 
-    if (isPlayingMix || playingSoloCharacterId !== null) {
+    const targetId =
+      activeRecordingTargetRef.current?.id || recordingDialogueId;
+    const result = await stopRecording();
+
+    if (result && targetId) {
+      const dialogue = data?.dialogues?.find((d) => d.id === targetId);
+      setTakesByDialogue((prev) => ({
+        ...prev,
+        [targetId]: {
+          id: Date.now(),
+          url: result.url,
+          start: dialogue?.start || 0,
+          end: dialogue?.end || 0,
+          speaker: dialogue?.speaker,
+        },
+      }));
+      showToast("¡Toma de frase guardada!", "success");
+    }
+
+    setRecordingDialogueId(null);
+    activeRecordingTargetRef.current = null;
+  };
+
+  const handleDeleteDialogueTake = (dialogueId) => {
+    if (playingSoloDialogueId === dialogueId) {
+      if (videoRef.current) videoRef.current.pause();
+      setPlayingSoloDialogueId(null);
+    }
+    setTakesByDialogue((prev) => {
+      const copy = { ...prev };
+      delete copy[dialogueId];
+      return copy;
+    });
+    showToast("Toma de frase descartada.", "warning");
+  };
+
+  const handleTogglePlaySoloLine = (dialogueId) => {
+    if (!videoRef.current) return;
+
+    if (playingSoloDialogueId === dialogueId) {
       videoRef.current.pause();
-      Object.values(audioElementsRef.current).forEach((a) => a?.pause());
+      audioElementsRef.current[`line_${dialogueId}`]?.pause();
+      setPlayingSoloDialogueId(null);
+      videoRef.current.muted = false;
+      videoRef.current.volume = 1.0;
+    } else {
       setIsPlayingMix(false);
       setPlayingSoloCharacterId(null);
+      Object.values(audioElementsRef.current).forEach((a) => a?.pause());
+
+      const dialogue = data?.dialogues?.find((d) => d.id === dialogueId);
+      if (!dialogue) return;
+
+      applyGuideAudioLevel();
+      videoRef.current.currentTime = dialogue.start;
+      videoRef.current.play();
+
+      const audio = audioElementsRef.current[`line_${dialogueId}`];
+      if (audio) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      }
+      setPlayingSoloDialogueId(dialogueId);
     }
+  };
+
+  // --- LÓGICA DE GRABACIÓN: 2. MODO ESCENA COMPLETA ---
+  const handleStartRecordFull = () => {
+    if (!videoRef.current || selectedCharacterId === null) return;
+
+    videoRef.current.pause();
+    Object.values(audioElementsRef.current).forEach((a) => a?.pause());
+    setIsPlayingMix(false);
+    setPlayingSoloCharacterId(null);
 
     setTakesByCharacter((prev) => {
       const copy = { ...prev };
@@ -415,7 +572,7 @@ export default function Home() {
         try {
           await startRecording();
           showToast(
-            `¡Grabando a ${data?.characters[selectedCharacterId]?.name}!`,
+            `¡Grabando pase completo de ${data?.characters[selectedCharacterId]?.name}!`,
             "warning",
           );
         } catch (err) {
@@ -427,7 +584,7 @@ export default function Home() {
     }, 1000);
   };
 
-  const handleStopRecord = async () => {
+  const handleStopRecordFull = async () => {
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.muted = false;
@@ -443,31 +600,24 @@ export default function Home() {
           url: result.url,
         },
       }));
-
       showToast(
-        `¡Toma de ${data?.characters[selectedCharacterId]?.name} lista!`,
+        `¡Toma corrida de ${data?.characters[selectedCharacterId]?.name} lista!`,
         "success",
       );
     }
   };
 
-  const handleDeleteTake = (speakerId) => {
+  const handleDeleteCharacterTake = (speakerId) => {
     if (playingSoloCharacterId === speakerId) {
-      if (videoRef.current) {
-        videoRef.current.pause();
-        videoRef.current.muted = false;
-        videoRef.current.volume = 1.0;
-      }
+      if (videoRef.current) videoRef.current.pause();
       setPlayingSoloCharacterId(null);
     }
-
     setTakesByCharacter((prev) => {
       const copy = { ...prev };
       delete copy[speakerId];
       return copy;
     });
-
-    showToast("Toma descartada correctamente.", "warning");
+    showToast("Toma completa descartada.", "warning");
   };
 
   const handleTogglePlaySoloTake = (speakerId) => {
@@ -475,19 +625,20 @@ export default function Home() {
 
     if (playingSoloCharacterId === speakerId) {
       videoRef.current.pause();
-      audioElementsRef.current[speakerId]?.pause();
+      audioElementsRef.current[`char_${speakerId}`]?.pause();
       setPlayingSoloCharacterId(null);
       videoRef.current.muted = false;
       videoRef.current.volume = 1.0;
     } else {
       setIsPlayingMix(false);
+      setPlayingSoloDialogueId(null);
       Object.values(audioElementsRef.current).forEach((a) => a?.pause());
 
       applyGuideAudioLevel();
       videoRef.current.currentTime = 0;
       videoRef.current.play();
 
-      const audio = audioElementsRef.current[speakerId];
+      const audio = audioElementsRef.current[`char_${speakerId}`];
       if (audio) {
         audio.currentTime = 0;
         audio.play().catch(() => {});
@@ -496,6 +647,7 @@ export default function Home() {
     }
   };
 
+  // --- REPRODUCCIÓN DE MEZCLA MAESTRA COMBINADA ---
   const handleTogglePlayMix = () => {
     if (!videoRef.current) return;
 
@@ -507,17 +659,21 @@ export default function Home() {
       videoRef.current.volume = 1.0;
     } else {
       setPlayingSoloCharacterId(null);
+      setPlayingSoloDialogueId(null);
 
       applyGuideAudioLevel();
       videoRef.current.currentTime = 0;
       videoRef.current.play();
 
-      Object.values(audioElementsRef.current).forEach((a) => {
-        if (a) {
-          a.currentTime = 0;
-          a.play().catch(() => {});
-        }
-      });
+      if (recordingMode === "full") {
+        Object.entries(takesByCharacter).forEach(([speakerId]) => {
+          const audio = audioElementsRef.current[`char_${speakerId}`];
+          if (audio) {
+            audio.currentTime = 0;
+            audio.play().catch(() => {});
+          }
+        });
+      }
       setIsPlayingMix(true);
     }
   };
@@ -536,16 +692,27 @@ export default function Home() {
     >
       <Toast toast={toast} onClose={() => setToast(null)} />
 
+      {/* Elementos de audio para Modo Corrido */}
       {Object.entries(takesByCharacter).map(([speakerId, take]) => (
         <audio
-          key={speakerId}
-          ref={(el) => (audioElementsRef.current[speakerId] = el)}
+          key={`char_${speakerId}`}
+          ref={(el) => (audioElementsRef.current[`char_${speakerId}`] = el)}
           src={take.url}
           preload="auto"
         />
       ))}
 
-      {/* Header con soporte de Deshacer (Undo) y Restaurar */}
+      {/* Elementos de audio para Modo Por Frase */}
+      {Object.entries(takesByDialogue).map(([dialogueId, take]) => (
+        <audio
+          key={`line_${dialogueId}`}
+          ref={(el) => (audioElementsRef.current[`line_${dialogueId}`] = el)}
+          src={take.url}
+          preload="auto"
+        />
+      ))}
+
+      {/* Header */}
       <motion.div
         initial={{ opacity: 0, y: -15, filter: "blur(6px)" }}
         animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
@@ -570,10 +737,9 @@ export default function Home() {
 
       {/* Área Central */}
       <div className="flex-1 flex gap-3 min-h-0 overflow-hidden">
-        <motion.div
-          layout="position"
-          transition={{ duration: 0.35, ease: smoothEase }}
-          className={`flex flex-col min-h-0 ${
+        {/* Contenedor Video Estabilizado */}
+        <div
+          className={`flex flex-col min-h-0 transition-[flex] duration-300 ease-out ${
             showRecordingStudio ? "flex-[5]" : "flex-1"
           }`}
         >
@@ -584,8 +750,9 @@ export default function Home() {
             onTimeUpdate={handleTimeUpdate}
             theme={theme}
           />
-        </motion.div>
+        </div>
 
+        {/* Guión Técnico */}
         <motion.div
           layout="position"
           transition={{ duration: 0.35, ease: smoothEase }}
@@ -604,6 +771,7 @@ export default function Home() {
           />
         </motion.div>
 
+        {/* Panel de Grabación ADR Pro */}
         <AnimatePresence mode="popLayout">
           {showRecordingStudio && (
             <motion.div
@@ -612,23 +780,33 @@ export default function Home() {
               animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
               exit={{ opacity: 0, x: 40, filter: "blur(6px)" }}
               transition={{ duration: 0.35, ease: smoothEase }}
-              className="flex-[3.5] flex flex-col min-h-0 overflow-hidden"
+              className="flex-[3.8] flex flex-col min-h-0 overflow-hidden"
             >
               <RecordingStudioPanel
                 theme={theme}
                 characters={data?.characters}
+                dialogues={data?.dialogues}
                 selectedCharacterId={selectedCharacterId}
                 onSelectCharacter={(id) => setSelectedCharacterId(id)}
                 isRecording={isRecording}
                 countdown={countdown}
-                onStartRecord={handleStartRecord}
-                onStopRecord={handleStopRecord}
+                recordingDialogueId={recordingDialogueId}
+                onStartRecordFull={handleStartRecordFull}
+                onStopRecordFull={handleStopRecordFull}
+                onStartRecordLine={handleStartRecordLine}
+                onStopRecordLine={handleStopRecordLine}
                 takesByCharacter={takesByCharacter}
+                takesByDialogue={takesByDialogue}
+                recordingMode={recordingMode}
+                onChangeRecordingMode={setRecordingMode}
                 playingSoloCharacterId={playingSoloCharacterId}
                 onTogglePlaySoloTake={handleTogglePlaySoloTake}
+                playingSoloDialogueId={playingSoloDialogueId}
+                onTogglePlaySoloLine={handleTogglePlaySoloLine}
                 isPlayingMix={isPlayingMix}
                 onTogglePlayMix={handleTogglePlayMix}
-                onDeleteTake={handleDeleteTake}
+                onDeleteCharacterTake={handleDeleteCharacterTake}
+                onDeleteDialogueTake={handleDeleteDialogueTake}
                 guideAudioMode={guideAudioMode}
                 onChangeGuideAudioMode={handleGuideModeChange}
                 audioDevices={audioDevices}
@@ -647,12 +825,8 @@ export default function Home() {
         theme={theme}
       />
 
-      {/* Timeline con soporte de Trimming, Creación manual y Eliminación */}
-      <motion.div
-        initial={{ opacity: 0, y: 15, filter: "blur(6px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        transition={{ duration: 0.5, delay: 0.1, ease: smoothEase }}
-      >
+      {/* Timeline NLE */}
+      <div className="shrink-0 w-full">
         <Timeline
           data={data}
           currentTime={currentTime}
@@ -666,7 +840,7 @@ export default function Home() {
           onAddDialogue={handleAddDialogue}
           onDeleteDialogue={handleDeleteDialogue}
         />
-      </motion.div>
+      </div>
     </main>
   );
 }
